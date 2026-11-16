@@ -22,7 +22,7 @@ export function PanelTitle({ title, action }: { title: string; action?: React.Re
 }
 
 export function Evidence({ source, quote, page }: { source: string; quote: string; page?: number }) {
-  return <div className="rounded-xl border border-[#e7e1d6] bg-[#faf9f5] p-4"><div className="mb-2 flex items-center gap-2 text-xs font-semibold text-[#74603a]"><FileText size={15}/>{source}{page ? ` · p. ${page}` : ""}<ArrowUpRight size={13} className="ml-auto"/></div><blockquote className="border-l-2 border-[#c6a25c] pl-3 text-sm leading-relaxed text-[#59554d]">{quote}</blockquote></div>;
+  return <details open className="group rounded-xl border border-[#e7e1d6] bg-[#faf9f5] p-4"><summary className="flex cursor-pointer list-none items-center gap-2 text-xs font-semibold text-[#74603a] outline-none focus-visible:ring-2 focus-visible:ring-[#b78a3e]"><FileText size={15}/><span className="min-w-0 flex-1 truncate">{source}{page ? ` · p. ${page}` : ""}</span><span className="text-[10px] font-medium text-[#8f887b]">Evidence details</span><ArrowUpRight size={13}/></summary><blockquote className="mt-3 border-l-2 border-[#c6a25c] pl-3 text-sm leading-relaxed text-[#59554d]">{quote}</blockquote></details>;
 }
 
 export function StateIcon({ kind }: { kind: "approved" | "pending" | "alert" }) {

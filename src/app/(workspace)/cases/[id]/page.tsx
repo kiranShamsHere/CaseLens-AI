@@ -7,9 +7,11 @@ import { ArrowLeft, FileText, TriangleAlert } from "lucide-react";
 import { api, apiCollection } from "@/components/api";
 import { demoCases, demoFindings, type CaseRecord } from "@/components/demo-data";
 import { Badge, Button, Evidence, PageHeading, Panel, PanelTitle } from "@/components/ui";
+import { readOfflineCache, writeOfflineCache } from "@/components/offline";
 
 type CaseDocument = { id: string; name: string; details: string; status: string };
 type CaseFlag = { id: string; title: string; description: string; source: string; quote: string; severity: string };
+type CaseOfflineSummary = { caseRecord: CaseRecord; documents: CaseDocument[]; flags: CaseFlag[] };
 const sampleDocuments: CaseDocument[] = [
   { id: "doc-1", name: "Client intake form.pdf", details: "PDF · 1.2 MB · Page count not verified", status: "Processed" },
   { id: "doc-2", name: "Employer letter.pdf", details: "PDF · 824 KB · Page count not verified", status: "Processed" },
@@ -45,6 +47,18 @@ export default function CaseDetail() {
 
   useEffect(() => {
     let active = true;
+    const cached = readOfflineCache<CaseOfflineSummary>(`case:${id}`);
+    if (cached) {
+      queueMicrotask(() => {
+        if (!active) return;
+        setCaseRecord(cached.caseRecord);
+        setDocuments(cached.documents);
+        setFlags(cached.flags);
+        setCaseSource("Cached case");
+        setDocumentsSource("Cached summary");
+        setFlagsSource("Cached evidence");
+      });
+    }
     void Promise.all([
       api<unknown>(`/api/cases/${encodeURIComponent(id)}`).catch(() => null),
       apiCollection<unknown>(`/api/documents?caseId=${encodeURIComponent(id)}`, "documents"),
@@ -52,6 +66,9 @@ export default function CaseDetail() {
       apiCollection<unknown>(`/api/missing?caseId=${encodeURIComponent(id)}`, "missing"),
     ]).then(([caseResult, liveDocuments, conflicts, missing]) => {
       if (!active) return;
+      let nextCase = cached?.caseRecord ?? demoCases.find(item => item.id === id) ?? demoCases[0];
+      let nextDocuments = cached?.documents ?? sampleDocuments;
+      let nextFlags = cached?.flags ?? sampleFlags;
       if (caseResult && typeof caseResult === "object") {
         const outer = caseResult as Record<string, unknown>;
         const raw = outer.case ?? outer.data ?? caseResult;
@@ -59,14 +76,18 @@ export default function CaseDetail() {
           const item = raw as Record<string, unknown>;
           const title = item.title ?? item.name ?? item.caseName;
           if (typeof title === "string") {
-            setCaseRecord({ id, title, reference: String(item.reference ?? item.caseNumber ?? id), type: String(item.type ?? item.caseType ?? "Case"), status: String(item.status ?? "Open"), updated: String(item.updatedAt ?? "Recently updated"), documents: Number(item.documentCount ?? 0) });
+            nextCase = { id, title, reference: String(item.reference ?? item.caseNumber ?? id), type: String(item.type ?? item.caseType ?? "Case"), status: String(item.status ?? "Open"), updated: String(item.updatedAt ?? "Recently updated"), documents: Number(item.documentCount ?? 0) };
+            setCaseRecord(nextCase);
             setCaseSource("Live case record");
           }
         }
       }
-      if (liveDocuments !== null) { setDocuments(liveDocuments.map(normalizeDocument).filter((item): item is CaseDocument => item !== null)); setDocumentsSource("Live case documents"); }
+      if (liveDocuments !== null) { nextDocuments = liveDocuments.map(normalizeDocument).filter((item): item is CaseDocument => item !== null); setDocuments(nextDocuments); setDocumentsSource("Live case documents"); }
       const liveFlags = [...(conflicts ?? []), ...(missing ?? [])].map(normalizeFlag).filter((item): item is CaseFlag => item !== null);
-      if (conflicts !== null || missing !== null) { setFlags(liveFlags); setFlagsSource("Live API findings"); }
+      if (conflicts !== null || missing !== null) { nextFlags = liveFlags; setFlags(nextFlags); setFlagsSource("Live API findings"); }
+      if (caseResult || liveDocuments !== null || conflicts !== null || missing !== null) {
+        writeOfflineCache(`case:${id}`, { caseRecord: nextCase, documents: nextDocuments, flags: nextFlags });
+      }
     });
     return () => { active = false; };
   }, [id]);
