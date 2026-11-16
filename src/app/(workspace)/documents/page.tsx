@@ -20,7 +20,9 @@ function normalizeDocument(value: unknown, index: number): DocumentRecord | null
   const name = item.filename ?? item.fileName ?? item.name ?? item.title;
   if (typeof name !== "string") return null;
   const size = typeof item.size === "number" ? `${Math.max(1, Math.round(item.size / 1024))} KB` : "";
-  return { id: String(item.id ?? index), name, details: [String(item.type ?? item.mimeType ?? "Document"), size].filter(Boolean).join(" · "), status: String(item.status ?? "Uploaded") };
+  const uploadedAt = item.uploadedAt ?? item.createdAt;
+  const uploaded = typeof uploadedAt === "string" ? `Uploaded ${uploadedAt}` : "Upload date unavailable";
+  return { id: String(item.id ?? index), name, details: [String(item.type ?? item.mimeType ?? "Document"), size, uploaded].filter(Boolean).join(" · "), status: String(item.status ?? "Uploaded") };
 }
 
 export default function Documents() {
