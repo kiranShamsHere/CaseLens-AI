@@ -71,7 +71,16 @@ export default function Review() {
     setBusy(true); setNotice("");
     try {
       await api<unknown>("/api/review", { method: "POST", body: JSON.stringify({ findingId: id, decision: action.toLowerCase().replaceAll(" ", "_"), notes }) });
-      setItems(current => current.map(finding => finding.id === id ? { ...finding, status: action === "Needs review" ? "Needs review" : action === "Approve" ? "Approved" : "Rejected" } : finding));
+      const [conflicts, missing] = await Promise.all([
+        apiCollection<unknown>("/api/conflicts", "conflicts"),
+        apiCollection<unknown>("/api/missing", "missing"),
+      ]);
+      const refreshed = [...(conflicts ?? []), ...(missing ?? [])].map(normalizeFinding).filter((item): item is ReviewFinding => item !== null);
+      const confirmedStatus = action === "Needs review" ? "Needs review" : action === "Approve" ? "Approved" : "Rejected";
+      setItems(current => {
+        const source = conflicts !== null || missing !== null ? refreshed : current;
+        return source.map(finding => finding.id === id ? { ...finding, status: finding.status === "Pending" ? confirmedStatus : finding.status } : finding);
+      });
       setNotice("The review decision was accepted by the case API."); setChoice(null); setNotes("");
     } catch (issue) {
       if ((!navigator.onLine || issue instanceof TypeError) && enqueueReviewAction({ findingId: id, decision: action.toLowerCase().replaceAll(" ", "_"), notes })) {
