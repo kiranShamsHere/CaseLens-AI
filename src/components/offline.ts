@@ -1,9 +1,17 @@
 import { api } from "@/components/api";
 
 const CACHE_PREFIX = "caselens-cache-v1:";
-const REVIEW_QUEUE_KEY = "caselens-review-queue-v1";
+const REVIEW_QUEUE_PREFIX = "caselens-review-queue-v1:";
 const REVIEW_QUEUE_EVENT = "caselens-review-queue-change";
 const CACHE_TTL = 14 * 24 * 60 * 60 * 1000;
+let userScope = "unscoped";
+
+export function setOfflineUserScope(userId: string) {
+  userScope = userId;
+}
+
+function cacheKey(key: string) { return `${CACHE_PREFIX}${userScope}:${key}`; }
+function reviewQueueKey() { return `${REVIEW_QUEUE_PREFIX}${userScope}`; }
 
 export type PendingReviewAction = {
   id: string;
@@ -13,7 +21,7 @@ export type PendingReviewAction = {
   createdAt: number;
 };
 
-let flushPromise: Promise<PendingReviewAction[]> | null = null;
+const flushPromises = new Map<string, Promise<PendingReviewAction[]>>();
 
 function storageAvailable() {
   return typeof window !== "undefined" && !!window.localStorage;
@@ -22,7 +30,7 @@ function storageAvailable() {
 export function writeOfflineCache<T>(key: string, value: T) {
   if (!storageAvailable()) return;
   try {
-    window.localStorage.setItem(`${CACHE_PREFIX}${key}`, JSON.stringify({ savedAt: Date.now(), value }));
+    window.localStorage.setItem(cacheKey(key), JSON.stringify({ savedAt: Date.now(), value }));
   } catch {
     // Storage can be disabled or full. The live workspace remains usable.
   }
@@ -31,11 +39,11 @@ export function writeOfflineCache<T>(key: string, value: T) {
 export function readOfflineCache<T>(key: string): T | null {
   if (!storageAvailable()) return null;
   try {
-    const raw = window.localStorage.getItem(`${CACHE_PREFIX}${key}`);
+    const raw = window.localStorage.getItem(cacheKey(key));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as { savedAt?: unknown; value?: T };
     if (typeof parsed.savedAt !== "number" || Date.now() - parsed.savedAt > CACHE_TTL) {
-      window.localStorage.removeItem(`${CACHE_PREFIX}${key}`);
+      window.localStorage.removeItem(cacheKey(key));
       return null;
     }
     return parsed.value ?? null;
@@ -47,7 +55,7 @@ export function readOfflineCache<T>(key: string): T | null {
 export function readPendingReviewActions(): PendingReviewAction[] {
   if (!storageAvailable()) return [];
   try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(REVIEW_QUEUE_KEY) || "[]");
+    const parsed: unknown = JSON.parse(window.localStorage.getItem(reviewQueueKey()) || "[]");
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((item): item is PendingReviewAction => Boolean(
       item && typeof item === "object" &&
@@ -80,7 +88,7 @@ export function enqueueReviewAction(action: Omit<PendingReviewAction, "id" | "cr
   if (queue.some(item => item.findingId === action.findingId)) return false;
   queue.push({ ...action, id: crypto.randomUUID(), createdAt: Date.now() });
   try {
-    window.localStorage.setItem(REVIEW_QUEUE_KEY, JSON.stringify(queue));
+    window.localStorage.setItem(reviewQueueKey(), JSON.stringify(queue));
     publishQueueChange();
     return true;
   } catch {
@@ -90,10 +98,23 @@ export function enqueueReviewAction(action: Omit<PendingReviewAction, "id" | "cr
 
 export function flushPendingReviewActions(): Promise<PendingReviewAction[]> {
   if (!storageAvailable() || !navigator.onLine) return Promise.resolve([]);
-  if (flushPromise) return flushPromise;
-  flushPromise = (async () => {
+  const scope = userScope;
+  const key = `${REVIEW_QUEUE_PREFIX}${scope}`;
+  const existing = flushPromises.get(scope);
+  if (existing) return existing;
+  const flush = (async () => {
     const synced: PendingReviewAction[] = [];
-    for (const action of readPendingReviewActions()) {
+    const readQueue = (): PendingReviewAction[] => {
+      try {
+        const parsed: unknown = JSON.parse(window.localStorage.getItem(key) || "[]");
+        return Array.isArray(parsed) ? parsed.filter((item): item is PendingReviewAction => Boolean(
+          item && typeof item === "object" && typeof item.id === "string" &&
+          typeof item.findingId === "string" && typeof item.decision === "string" &&
+          typeof item.notes === "string" && typeof item.createdAt === "number"
+        )) : [];
+      } catch { return []; }
+    };
+    for (const action of readQueue()) {
       if (!navigator.onLine) break;
       try {
         await api<unknown>("/api/review", {
@@ -101,8 +122,8 @@ export function flushPendingReviewActions(): Promise<PendingReviewAction[]> {
           headers: { "Idempotency-Key": action.id },
           body: JSON.stringify({ findingId: action.findingId, decision: action.decision, notes: action.notes, requestId: action.id }),
         });
-        const remaining = readPendingReviewActions().filter(item => item.id !== action.id);
-        window.localStorage.setItem(REVIEW_QUEUE_KEY, JSON.stringify(remaining));
+        const remaining = readQueue().filter(item => item.id !== action.id);
+        window.localStorage.setItem(key, JSON.stringify(remaining));
         synced.push(action);
         publishQueueChange();
       } catch {
@@ -111,6 +132,7 @@ export function flushPendingReviewActions(): Promise<PendingReviewAction[]> {
       }
     }
     return synced;
-  })().finally(() => { flushPromise = null; });
-  return flushPromise;
+  })().finally(() => { flushPromises.delete(scope); });
+  flushPromises.set(scope, flush);
+  return flush;
 }
