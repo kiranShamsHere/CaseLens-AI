@@ -1,71 +1,130 @@
 # Contributing to CaseLens
 
-Thanks for helping make casework easier to check. CaseLens is an early prototype, so clear scope and careful handling of evidence matter as much as the interface.
+CaseLens helps people check evidence before it affects a case. Contributions should keep that promise: clear sources, honest labels, and humans in charge.
 
-## Before you start
+## How a change moves
 
-- Check the existing pages and shared components before adding a new pattern.
-- For a large change, open an issue or discussion first so the team can agree on the shape of the work.
-- Keep sample data fictional. Never commit client files, personal information, API keys, tokens, or `.env.local`.
-- Do not describe an unmeasured result as a proven improvement or an illustrative record as real case data.
+```mermaid
+flowchart LR
+    A["Open or pick an issue"] --> B["Branch from main"]
+    B --> C["Make one focused change"]
+    C --> D["Run checks"]
+    D --> E["Open pull request"]
+    E --> F["Review"]
+    F --> G["Merge"]
+```
+
+## Ground rules
+
+| Do | Do not |
+| --- | --- |
+| Use fictional sample data | Commit client files, personal data, keys, tokens or `.env.local` |
+| Label data as Sample, Live or Unavailable | Blend demo and API data silently |
+| Keep source, location and a quote on high impact findings | Present an AI answer as verified because it looks polished |
+| Treat a missing match as a follow up question | Claim something did not happen because it was not found |
+| Describe measured results with numbers | Claim an improvement that has not been measured |
+
+For a large change, open an issue first so we can agree on the shape of the work.
 
 ## Local setup
 
-Requirements: Node.js 20.9 or newer and npm.
+Requires Node.js 20.9 or newer and npm.
 
 ```bash
-git clone https://github.com/ghulamebilal-dev/caselens-ai.git
-cd caselens-ai
+git clone https://github.com/kiranShamsHere/CaseLens-AI.git
+cd CaseLens-AI
 npm install
+cp .env.example .env.local
+```
+
+Open `.env.local` and add credentials from your own Supabase project. Add your own Gemini API key if you want AI generated answers. Never use credentials shared privately by another contributor or the project owner.
+
+Then start the dev server:
+
+```bash
 npm run dev
 ```
 
-Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The app can be explored with sample records without an API. To use a backend, create `.env.local` and set `NEXT_PUBLIC_API_BASE_URL` to the API origin. Never put a secret in a `NEXT_PUBLIC_` variable; Next.js exposes it to the browser.
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000).
 
-Before opening a pull request, run:
+| Variable | Needed for |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Auth and database |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Auth and database |
+| `GEMINI_API_KEY` | Optional AI answers. Without it Ask AI is retrieval only |
+| `GEMINI_MODEL` | Optional. Defaults to `gemini-3.8-flash` |
+
+Google sign in requires a Google OAuth client configured in your own Google Cloud project and in your Supabase Google provider settings. Email and password authentication can be configured independently.
+
+Run `supabase/schema.sql` in your own Supabase project first. The full setup is in the [README](README.md#quick-start).
+
+Never put a secret in a `NEXT_PUBLIC_` variable. Next.js sends those to the browser.
+
+## Where things live
+
+| If you are changing | Look in |
+| --- | --- |
+| A page | `src/app/(workspace)/` |
+| An API route | `src/app/api/` |
+| File extraction | `src/lib/documents.ts` |
+| Conflict or missing info checks | `src/lib/findings.ts` |
+| Passage ranking | `src/lib/retrieval.ts` |
+| Database tables or policies | `supabase/schema.sql` |
+| Shared UI | `src/components/ui.tsx` |
+| Frontend API handling | `src/components/api.ts`, `src/components/demo-data.ts` |
+
+## Branches and commits
+
+| Item | Convention | Example |
+| --- | --- | --- |
+| Branch | `type/short-name` | `feature/case-filters`, `fix/mobile-review-layout`, `docs/readme` |
+| Commit | Conventional Commits | `feat: add conflict filter`, `fix: handle empty PDF`, `docs: update setup` |
+
+Common types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`. Write what changed and why, not just "update".
+
+## Checks before a pull request
 
 ```bash
 npm run lint
 npm run typecheck
+npm run test:backend
 npm run build
 ```
 
-## Working on a change
+| Change type | Also do |
+| --- | --- |
+| UI | Check narrow and wide screens, light and dark theme, keyboard focus, reduced motion |
+| Extraction or findings | Add or update a test in `tests/backend/` |
+| Database | Update `supabase/schema.sql`, keep it safe to rerun, keep row level security on |
+| API contract | Update the API table in the README and the adapter in `src/components/api.ts` |
 
-1. Start from an up-to-date `main` branch.
-2. Create a focused branch, for example `feature/case-filters` or `fix/mobile-review-layout`.
-3. Make one coherent change at a time. Reuse `src/components/ui.tsx` and the shared workspace shell when they fit.
-4. Check the affected route at a narrow and wide viewport, in light and dark themes, and with sample/API-unavailable states where relevant.
-5. Run the checks above and inspect `git diff` for accidental files or data.
-6. Open a pull request with context, screenshots for visual changes, and any known limitation.
+If you touch ownership or policies, test with two accounts. Account B must not read, update or delete Account A's case.
 
-## Design and implementation conventions
+## Design conventions
 
-- Keep the visual language calm and readable: warm neutrals, restrained gold accents, legible type, and soft borders.
-- Preserve responsive behavior. Dense information should still have a clear reading order on a small screen.
-- Keep focus states visible and controls keyboard-operable. Respect reduced-motion preferences.
-- Label the source state accurately: sample, live, or unavailable. Do not silently blend demo and API data.
-- For a high-impact finding, retain the source, location when available, and enough quoted context for a person to verify it.
-- A missing match is not proof that something did not happen. Use language that invites follow-up.
-- Do not make an AI answer look verified just because it is well formatted. Keep citations and review state visible.
-- Keep API response handling aligned with the adapter and normalizers in `src/components/api.ts` and `src/components/demo-data.ts`. Update this README if routes or expected payloads change.
-- Avoid adding dependencies for small interface needs when the existing stack already covers them.
+| Area | Guidance |
+| --- | --- |
+| Look | Calm and readable: warm neutrals, restrained gold accents, legible type, soft borders |
+| Responsive | Dense information needs a clear reading order on small screens |
+| Accessibility | Visible focus states, keyboard operable controls, respect reduced motion |
+| Language | Invite follow up. Avoid certainty the record does not support |
+| Dependencies | Avoid adding one for a small need the current stack already covers |
 
 ## Pull request checklist
 
-- [ ] The change solves one described problem and has a clear summary.
-- [ ] Lint, typecheck, and production build pass.
-- [ ] Relevant screens were checked on mobile and desktop.
-- [ ] Light/dark theme and keyboard focus were considered for UI changes.
-- [ ] Sample content is clearly illustrative; no real client data or secrets were added.
-- [ ] Evidence and review states remain honest and traceable.
-- [ ] Screenshots or a short recording are attached for visual changes.
-- [ ] Documentation and API notes are updated when behavior or contracts change.
+- [ ] Solves one described problem, with a clear summary
+- [ ] Lint, typecheck, backend tests and build pass
+- [ ] Checked on mobile and desktop where relevant
+- [ ] Light and dark theme and keyboard focus considered for UI changes
+- [ ] Sample content is fictional. No secrets or real client data
+- [ ] Evidence and review states stay honest and traceable
+- [ ] Screenshots or a short recording for visual changes
+- [ ] README and API notes updated if behavior or contracts changed
 
 ## Reporting a security or privacy concern
 
-Do not include confidential client material in a public issue. Contact the repository maintainers privately with a concise description and steps to reproduce. This prototype is not approved for real client data; report accidental exposure promptly so maintainers can assess it.
+Do not post confidential material in a public issue. Contact the maintainers privately with a short description and steps to reproduce. This prototype is not approved for real client data. If something was exposed by accident, report it quickly.
 
 ## Questions
 
-For product or implementation questions, open a GitHub issue with the route or component involved, what you expected, what happened, and the smallest reproducible example you can share safely.
+Open a GitHub issue. Include the route or component, what you expected, what happened, and the smallest example you can share safely.
