@@ -8,9 +8,22 @@ export type DocumentRecord = {
   status: string; statusNote: string; pageCount: number | null; analysisStatus: string; createdAt: string;
 };
 
-export type EvidenceCitation = { documentId?: string; source: string; page?: number; quote: string };
+export type EvidenceCitation = { documentId?: string; source: string; page?: number; quote: string; explanation?: string };
 export type AskRequest = { caseId: string; question: string };
-export type AskResponse = { answer: string; status: "needs_human_review"; mode: "gemini" | "retrieval_only"; citations: EvidenceCitation[]; conflicts: string[] };
+export type AskResponse = {
+  summary: string;
+  status: "needs_human_review";
+  mode:
+  | "ai_evidence"
+  | "retrieval_only"
+  | "case_metadata"
+  | "product_knowledge"
+  | "domain_redirect";
+  citations: EvidenceCitation[];
+  potentialIssues: string[];
+  nextSteps: string[];
+  conflicts: string[];
+};
 export type FindingRecord = {
   id: string; caseId: string; kind: "conflict" | "missing"; title: string; description: string;
   severity: string; status: string; evidence: EvidenceCitation[]; createdAt: string;

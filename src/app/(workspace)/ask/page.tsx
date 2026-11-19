@@ -6,9 +6,9 @@ import { Bot, Check, Copy, Pencil, Send, Sparkles, UserRound, MessageSquareText 
 import { api, apiCollection } from "@/components/api";
 import { normalizeCaseRecord, type CaseRecord } from "@/components/demo-data";
 import { Badge, Evidence, PageHeading, Panel } from "@/components/ui";
+import type { AskResponse, EvidenceCitation } from "@/lib/contracts";
 
-type Citation = { source: string; page?: number; quote: string };
-type Answer = { text: string; citations: Citation[]; conflicts: string[]; mode?: "gemini" | "retrieval_only" };
+type Answer = AskResponse;
 type ConversationTurn = { question: string; answer: Answer | null; error: string };
 const suggestions = ["When did the client start working?", "What salary is recorded in the file?", "Which documents are still missing?"];
 
@@ -26,20 +26,42 @@ function MessageActions({ copied, disabled, onCopy, onEdit }: { copied: boolean;
 function normalizeAnswer(value: unknown): Answer | null {
   if (!value || typeof value !== "object") return null;
   const item = value as Record<string, unknown>;
-  const text = item.answer ?? item.response ?? item.text;
-  if (typeof text !== "string") return null;
-  const rawCitations = Array.isArray(item.citations) ? item.citations : Array.isArray(item.evidence) ? item.evidence : Array.isArray(item.sources) ? item.sources : [];
-  const citations = rawCitations.flatMap((entry): Citation[] => {
+  const summary = item.summary;
+  const status = item.status;
+  const mode = item.mode;
+  if (typeof summary !== "string" || status !== "needs_human_review" || (mode !== "ai_evidence" && mode !== "retrieval_only" && mode !== "case_metadata" && mode !== "product_knowledge" && mode !== "domain_redirect")) return null;
+
+  const citations = (Array.isArray(item.citations) ? item.citations : []).flatMap((entry): EvidenceCitation[] => {
     if (!entry || typeof entry !== "object") return [];
     const citation = entry as Record<string, unknown>;
-    const source = citation.source ?? citation.filename ?? citation.documentName;
-    const quote = citation.quote ?? citation.excerpt ?? citation.text;
-    if (typeof source !== "string" || typeof quote !== "string") return [];
-    return [{ source, quote, page: typeof citation.page === "number" ? citation.page : undefined }];
+    if (typeof citation.source !== "string" || typeof citation.quote !== "string") return [];
+    return [{
+      source: citation.source,
+      quote: citation.quote,
+      ...(typeof citation.documentId === "string" ? { documentId: citation.documentId } : {}),
+      ...(typeof citation.page === "number" ? { page: citation.page } : {}),
+      ...(typeof citation.explanation === "string" ? { explanation: citation.explanation } : {}),
+    }];
   });
-  const rawConflicts = Array.isArray(item.conflicts) ? item.conflicts : [];
-  const conflicts = rawConflicts.map(conflict => typeof conflict === "string" ? conflict : conflict && typeof conflict === "object" ? String((conflict as Record<string, unknown>).title ?? (conflict as Record<string, unknown>).description ?? "Conflict requires review") : "");
-  return { text, citations, conflicts: conflicts.filter(Boolean), mode: item.mode === "gemini" ? "gemini" : item.mode === "retrieval_only" ? "retrieval_only" : undefined };
+  const toStrings = (input: unknown) => Array.isArray(input)
+    ? input.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+  return { summary, status, mode, citations, potentialIssues: toStrings(item.potentialIssues), nextSteps: toStrings(item.nextSteps), conflicts: toStrings(item.conflicts) };
+}
+
+function AssistantAnswer({ answer }: { answer: Answer }) {
+  const issues = [...answer.potentialIssues, ...answer.conflicts.map((conflict) => `Conflict requires review: ${conflict}`)];
+  return <div className="min-w-0 max-w-[90%] sm:max-w-[85%]">
+    <div className="mb-3 flex flex-wrap items-center gap-2"><span className="text-base font-semibold">CaseLens AI</span><Badge tone="amber">{answer.mode === "retrieval_only" ? "Retrieval only" : answer.mode === "case_metadata" ? "Case record" : answer.mode === "product_knowledge" ? "Product guidance" : answer.mode === "domain_redirect" ? "Outside CaseLens scope" : "Unverified · human review required"}</Badge></div>
+    <section><h3 className="text-[11px] font-semibold uppercase tracking-[.14em] text-[#74736D]">Summary</h3><p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-[#4b565f]">{answer.summary}</p></section>
+    {answer.mode === "ai_evidence" && answer.citations.length === 0 && <p role="alert" className="mt-3 rounded-lg border border-[#ead4c9] bg-[#fbf1ed] p-3 text-sm text-[#8d5747]">No validated source citations were returned. Treat this summary as unverified until supporting evidence is reviewed.</p>}
+    {answer.mode === "product_knowledge" && <p className="mt-3 rounded-lg border border-[#e7e0d5] bg-[#F1ECE1] p-3 text-xs text-[#74736D]">Product guidance only. This information is separate from evidence in the selected legal case.</p>}
+    {answer.mode === "domain_redirect" && <p className="mt-3 text-xs text-[#74736D]">CaseLens AI supports CaseLens workflows and analysis of the selected legal case.</p>}
+    {answer.citations.length > 0 && <section className="mt-4"><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[.14em] text-[#74736D]">Supporting Evidence</h3><div className="space-y-3">{answer.citations.map((citation, index) => <div key={`${citation.documentId ?? citation.source}-${citation.page ?? ""}-${index}`}><Evidence source={citation.source} page={citation.page} quote={citation.quote}/>{citation.explanation && <p className="mt-1.5 text-xs leading-relaxed text-[#74736D]">{citation.explanation}</p>}</div>)}</div></section>}
+    {issues.length > 0 && <section className="mt-4 rounded-lg border border-[#e7e0d5] bg-[#faf4e8] p-4"><h3 className="text-[11px] font-semibold uppercase tracking-[.14em] text-[#803E4B]">Potential Issues</h3><ul className="mt-2 list-disc space-y-1 pl-4 text-sm leading-relaxed text-[#5f5143]">{issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></section>}
+    {answer.nextSteps.length > 0 && <section className="mt-4 rounded-lg border border-[#e7e0d5] bg-[#F1ECE1] p-4"><h3 className="text-[11px] font-semibold uppercase tracking-[.14em] text-[#172B3A]">Recommended Next Steps</h3><ul className="mt-2 list-disc space-y-1 pl-4 text-sm leading-relaxed text-[#4b565f]">{answer.nextSteps.map((step, index) => <li key={index}>{step}</li>)}</ul></section>}
+    <p className="mt-3 text-xs text-[#74736D]">{answer.mode === "retrieval_only" ? "Keyword retrieval only. No AI-generated answer was produced; verify each retrieved passage in its source document." : answer.mode === "case_metadata" ? "Record-based response from the selected case. Verify the recorded details before relying on them." : answer.mode === "product_knowledge" ? "Product guidance only; it is not evidence about the selected case." : answer.mode === "domain_redirect" ? "No case analysis was performed for this request." : "CaseLens AI evidence-based response. Verify the cited sources before relying on it."}</p>
+  </div>;
 }
 
 export default function Ask() {
@@ -78,7 +100,7 @@ export default function Ask() {
       if (issue instanceof Error) {
         const status = issue.message.match(/Request failed \((\d{3})\)/)?.[1];
         setError(status === "404"
-          ? "The Ask AI endpoint is not connected yet. Your question is kept in this conversation, but no answer was generated."
+          ? "The Ask CaseLens endpoint is not connected yet. Your question is kept in this conversation, but no answer was generated."
           : status
             ? `The case API returned an error (${status}). No answer was generated.`
             : issue.message);
@@ -111,7 +133,7 @@ export default function Ask() {
   };
 
   return <>
-    <PageHeading eyebrow="Evidence-based case research" title="Ask CaseLens" description="Ask about the case file and inspect every cited source before relying on an answer." action={<Badge tone={error ? "amber" : "blue"}>{error ? "API unavailable" : "Live API required"}</Badge>}/>
+    <PageHeading eyebrow="Evidence-based case research" title="Ask CaseLens" description="Ask about the case file and inspect every cited source before relying on an answer." action={<Badge tone={error ? "amber" : "blue"}>{error ? "Service unavailable" : "Human review required"}</Badge>}/>
     <Panel className="flex min-h-[600px] w-full flex-col">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4">
         <label className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-[#69756f]"><span>Case</span><select value={caseId} onChange={event => { setCaseId(event.target.value); setAnswer(null); setAskedQuestion(""); setHistory([]); setError(""); }} className="app-search min-w-0 max-w-[280px] rounded-lg border py-2 pl-2 pr-6 text-sm font-medium text-[#39453f] outline-none"><option value="">Select a case…</option>{caseOptions.map(item => <option key={item.id} value={item.id}>{item.reference} · {item.title}</option>)}</select></label>
@@ -125,7 +147,7 @@ export default function Ask() {
               <UserRound size={17} className="mt-3 shrink-0 text-[#54748a]"/>
             </div>
           </div>
-          {turn.answer && <div className="flex items-start gap-3"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e9ece8] text-[#526b7b]"><Bot size={17}/></div><div className="min-w-0 max-w-[90%] sm:max-w-[85%]"><div className="mb-2 flex items-center gap-2 text-sm font-semibold"><span>Evidence summary</span><Badge tone="amber">Unverified</Badge></div><p className="text-sm leading-6">{turn.answer.text}</p>{turn.answer.citations.map((citation, citationIndex) => <div className="mt-3" key={`${citation.source}-${citationIndex}`}><Evidence source={citation.source} page={citation.page} quote={citation.quote}/></div>)}{!turn.answer.citations.length && <p className="mt-2 text-xs text-[#9a5c49]">No source citations were returned; do not rely on this answer without verification.</p>}</div></div>}
+          {turn.answer && <div className="flex items-start gap-3"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e9ece8] text-[#526b7b]"><Bot size={17}/></div><AssistantAnswer answer={turn.answer}/></div>}
           {turn.error && <div role="alert" className="flex items-start gap-3"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e9ece8] text-[#526b7b]"><Bot size={17}/></div><div className="max-w-[90%] rounded-lg border border-[#d3d9dc] bg-[#f7f7f3] p-4 text-sm text-[#667680] sm:max-w-[85%]">{turn.error} No answer was generated or marked verified.</div></div>}
         </div>)}
         {!askedQuestion && !loading && !history.length && !caseId && <div className="mx-auto max-w-lg py-12 text-center"><div className="mx-auto grid h-14 w-14 place-items-center rounded-xl bg-[#e9eef1] text-[#526b7b]"><MessageSquareText size={24}/></div><h2 className="mt-5 text-xl font-semibold">{casesState === "loading" ? "Loading your cases…" : casesState === "unavailable" ? "Cases aren’t available" : "Create a case to get started"}</h2><p className="mt-2 text-sm leading-relaxed text-[#858f89]">{casesState === "ready" && !caseOptions.length ? "Ask CaseLens about a case after you create one and add its source records." : casesState === "unavailable" ? "Your case list could not be loaded. Check your connection and try again." : "CaseLens searches the selected case records and returns source evidence for your review."}</p>{casesState === "ready" && !caseOptions.length && <Link href="/cases" className="mt-5 inline-flex min-h-11 items-center border px-4 text-sm font-semibold">Create your first case</Link>}</div>}
@@ -133,9 +155,9 @@ export default function Ask() {
         {askedQuestion && <div className="flex justify-end"><div className="flex max-w-[90%] items-start gap-2 sm:max-w-[80%]"><div className="min-w-0"><div className="rounded-xl border border-[#cbd8e0] bg-[#e8eff3] px-4 py-3 text-sm leading-relaxed text-[#263b49]">{askedQuestion}</div><MessageActions copied={copiedQuestion === askedQuestion} disabled={loading} onCopy={() => void copyQuestion(askedQuestion)} onEdit={() => editQuestion(askedQuestion)}/></div><UserRound size={17} className="mt-3 shrink-0 text-[#54748a]"/></div></div>}
         {loading && <div role="status" className="flex items-center gap-3 text-sm text-[#7d8982]"><div className="grid h-8 w-8 place-items-center rounded-lg bg-[#e9ece8] text-[#526b7b]"><Bot size={17}/></div><span className="animate-pulse">Searching case evidence…</span></div>}
         {error && <div role="alert" className="flex items-start gap-3"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e9ece8] text-[#526b7b]"><Bot size={17}/></div><div className="max-w-[90%] rounded-lg border border-[#d3d9dc] bg-[#f7f7f3] p-4 text-sm leading-relaxed text-[#667680] sm:max-w-[85%]"><div className="mb-1 font-semibold text-[#344b5c]">I couldn’t retrieve an answer</div><p>{error}</p><div className="mt-2 text-xs">No answer was generated or marked verified.</div></div></div>}
-        {answer && <div className="flex items-start gap-3"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e9ece8] text-[#526b7b]"><Bot size={17}/></div><div className="min-w-0 max-w-[90%] sm:max-w-[85%]"><div className="mb-3 flex flex-wrap items-center gap-2"><span className="text-base font-semibold">Evidence summary</span><Badge tone="amber">Unverified · review sources</Badge></div><p className="text-sm leading-7 text-[#58645e]">{answer.text}</p>{answer.citations.length > 0 ? <div className="mt-4 space-y-3">{answer.citations.map((citation, index) => <Evidence key={`${citation.source}-${index}`} source={citation.source} page={citation.page} quote={citation.quote}/>)}</div> : <div className="mt-4 rounded-xl border border-[#ead4c9] bg-[#fbf1ed] p-4 text-sm leading-relaxed text-[#8d5747]">No source citations were returned. Do not rely on this answer until evidence is located and verified.</div>}{answer.conflicts.map((conflict, index) => <div key={index} className="mt-3 rounded-xl border border-[#ebdfc8] bg-[#faf4e8] p-4 text-sm leading-relaxed text-[#816538]">Conflict requires review: {conflict}</div>)}<div className="mt-3 text-xs text-[#8c948f]">{answer.mode === "gemini" ? "Gemini-assisted response · verify each citation against the original document." : "Keyword retrieval · answer is not AI-generated. Verify each citation against the original document."}</div></div></div>}
+        {answer && <div className="flex items-start gap-3"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#e9ece8] text-[#526b7b]"><Bot size={17}/></div><AssistantAnswer answer={answer}/></div>}
       </div>
-      <form onSubmit={event => { event.preventDefault(); void submit(); }} className="border-t p-4 sm:p-5"><label className="sr-only" htmlFor="question">Ask a question</label><div className="flex items-end gap-2 rounded-xl border bg-[#f7f8f6] p-2"><textarea id="question" rows={2} value={question} onChange={event => setQuestion(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); } }} placeholder="Ask about a fact, date, document…" className="min-h-[48px] max-h-28 flex-1 resize-y bg-transparent px-3 py-2 text-sm outline-none"/><button aria-label="Send question" type="submit" disabled={loading || !caseId || !question.trim()} className="grid h-10 w-10 place-items-center rounded-lg bg-[#344b5c] text-white transition hover:bg-[#263b49] disabled:opacity-50"><Send size={16}/></button></div><div className="mt-2 text-[11px] text-[#9aa39f]">{caseId ? "Enter to send · Shift + Enter for a new line" : "Create a case before asking a question."}</div></form>
+      <form onSubmit={event => { event.preventDefault(); void submit(); }} className="border-t p-4 sm:p-5"><label className="sr-only" htmlFor="question">Ask a question</label><div className="flex items-end gap-2 rounded-xl border bg-[#f7f8f6] p-2"><textarea id="question" rows={2} value={question} onChange={event => setQuestion(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void submit(); } }} placeholder="Ask about a fact, date, document…" className="min-h-[48px] max-h-28 flex-1 resize-y bg-transparent px-3 py-2 text-sm outline-none"/><button aria-label="Send question" type="submit" disabled={loading || !caseId || !question.trim()} className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--burgundy)] text-white transition hover:bg-[#6d3340] disabled:opacity-50"><Send size={16}/></button></div><div className="mt-2 text-[11px] text-[#9aa39f]">{caseId ? "Enter to send · Shift + Enter for a new line" : "Create a case before asking a question."}</div></form>
     </Panel>
   </>;
 }
