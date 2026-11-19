@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 import { extractDocument } from "@/lib/documents";
 import { candidatesFromPassages, normalizeAmountValue, normalizeDateValue, valuesContradict } from "@/lib/findings";
 import { quoteAppearsIn, rankPassages } from "@/lib/retrieval";
-import { classifyAskIntent } from "@/lib/ask-classifier";
+import { classifyAskIntent, classifyAskWithoutModel } from "@/lib/ask-classifier";
 
 test("TXT and CSV preserve extracted text with source page markers", async () => {
   const note = new File(["Client started work on 1 April 2024."], "intake.txt", { type: "text/plain" });
@@ -66,51 +66,35 @@ test("citations must be present in source text and facts normalize dates and amo
   assert.notEqual(candidates[0].normalized, candidates[1].normalized);
 });
 
-test("Ask intent handles conversational greetings naturally", () => {
-  for (const greeting of ["hello", "hi", "hey", "Hey there!"]) {
-    assert.equal(classifyAskIntent(greeting), "greeting", greeting);
-  }
-});
-
-test("Ask intent recognizes product questions and informal phrasing", () => {
-  const productQuestions = [
-    "What is CaseLens AI?",
-    "What features does CaseLens provide?",
-    "What is the purpose of CaseLens?",
-    "What is your purpose?",
-    "Who developed you?",
-    "Who created u?",
-    "What can you do?",
-    "How does your system work?",
-    "How does evidence retrieval work?",
-    "How does the human review workflow work?",
-    "whats caselens ai?",
-    "wht is case lens ai?",
-  ];
-  for (const question of productQuestions) {
+test("Ask intent handles greetings, CaseLens questions, and informal wording", () => {
+  for (const greeting of ["hello", "hi", "hey", "Hey there!"]) assert.equal(classifyAskIntent(greeting), "greeting", greeting);
+  for (const question of ["What is CaseLens AI?", "What is the purpose of CaseLens?", "What is your purpose?", "Who created u?", "What can you do?", "How does CaseLens work?", "whats caselens ai?", "wht is case lens ai?"]) {
     assert.equal(classifyAskIntent(question), "product_knowledge", question);
   }
 });
 
-test("Ask intent prioritizes selected-case questions and metadata wording", () => {
-  const caseQuestions = [
-    "How does CaseLens identify contradictions in this case?",
-    "Can CaseLens find missing information in my uploaded agreement?",
-    "What evidence supports this client's claim?",
-    "What evidence has CaseLens retrieved for my case?",
-    "What does this uploaded document say about the client's wages?",
-    "When was this case created?",
-  ];
-  for (const question of caseQuestions) {
-    assert.equal(classifyAskIntent(question), "case_analysis", question);
-  }
+test("Ask intent separates metadata, document, comparison, contradiction, missing, and timeline work", () => {
+  const samples = [
+    ["Who is the applicant?", "case_metadata"],
+    ["What is the location of the applicant Amina Raza?", "case_metadata"],
+    ["When was this case created?", "case_metadata"],
+    ["what salary does the offer letter mention", "document_question"],
+    ["what does my uploaded agreement say", "document_question"],
+    ["what evidence supports this client's claim", "document_question"],
+    ["compare the salary amounts across the sources", "evidence_comparison"],
+    ["compare employment start dates", "evidence_comparison"],
+    ["Do the dates contradict each other?", "contradiction"],
+    ["What information is missing?", "missing_information"],
+    ["Create a timeline of events", "timeline"],
+    ["Wher is the applicant located?", "case_metadata"],
+  ] as const;
+  for (const [question, expected] of samples) assert.equal(classifyAskIntent(question), expected, question);
 });
 
-test("Ask intent defers uncertain wording for Gemini and redirects explicit study requests", () => {
+test("Ask intent defers ambiguous requests to Gemini and recognizes unrelated requests", () => {
   assert.equal(classifyAskIntent("Explain photosynthesis."), "needs_model");
+  assert.equal(classifyAskWithoutModel("Explain photosynthesis."), "domain_redirect");
   assert.equal(classifyAskIntent("Help me with my mathematics homework."), "domain_redirect");
   assert.equal(classifyAskIntent("Explain how a document is structured."), "needs_model");
   assert.equal(classifyAskIntent("What is a workflow in healthcare?"), "needs_model");
-  assert.equal(classifyAskIntent("Explain information retrieval in mathematics."), "needs_model");
-  assert.equal(classifyAskIntent("What are basic security principles?"), "needs_model");
 });

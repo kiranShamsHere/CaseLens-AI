@@ -9,6 +9,7 @@ export type DocumentRecord = {
 };
 
 export type EvidenceCitation = { documentId?: string; source: string; page?: number; quote: string; explanation?: string };
+export type AskClaim = { text: string; citations: EvidenceCitation[] };
 export type AskRequest = { caseId: string; question: string };
 export type AskResponse = {
   summary: string;
@@ -20,6 +21,8 @@ export type AskResponse = {
   | "product_knowledge"
   | "domain_redirect";
   citations: EvidenceCitation[];
+  claims?: AskClaim[];
+  issueClaims?: AskClaim[];
   potentialIssues: string[];
   nextSteps: string[];
   conflicts: string[];
