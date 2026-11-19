@@ -62,21 +62,23 @@ export function AppShell({ children, userId, userName, userEmail }: { children: 
     .app-frame .app-panel { border-radius: 8px !important; }
     .app-frame .app-search, .app-frame input:not([type="checkbox"]), .app-frame textarea, .app-frame select { border-radius: 6px !important; }
     .app-frame .nav-link, .app-frame .theme-toggle { border-radius: 6px !important; }
-    .app-frame .nav-link:not(.nav-active):hover { color: #304b5c !important; background: #e2e7e8 !important; }
-    .app-frame .nav-link:not(.nav-active):hover svg { color: #617f91 !important; }
-    .app-frame .nav-active { color: #304b5c !important; background: #dce4e8 !important; box-shadow: inset 2px 0 rgba(83, 116, 137, .7) !important; }
-    .app-frame[data-theme="dark"] .nav-link:not(.nav-active):hover { color: #edf0f2 !important; background: #263540 !important; }
-    .app-frame[data-theme="dark"] .nav-link:not(.nav-active):hover svg { color: #9bb7c4 !important; }
-    .app-frame[data-theme="dark"] .nav-active { color: #b2cbd6 !important; background: #293944 !important; box-shadow: inset 2px 0 rgba(136, 168, 184, .62) !important; }
+    .app-frame .nav-link:not(.nav-active):hover { color: #172B3A !important; background: #F0E6D2 !important; }
+    .app-frame .nav-link:not(.nav-active):hover svg { color: #B89455 !important; }
+    .app-frame .nav-link.nav-active.font-semibold { color: #FFFDF9 !important; background: #172B3A !important; box-shadow: inset 3px 0 #B89455 !important; }
+    .app-frame .nav-link.nav-active.font-semibold svg { color: #FFFDF9 !important; }
+    .app-frame[data-theme="dark"] .nav-link:not(.nav-active):hover { color: #ece9e3 !important; background: #2c3742 !important; }
+    .app-frame[data-theme="dark"] .nav-link:not(.nav-active):hover svg { color: #cdaa6a !important; }
+    .app-frame[data-theme="dark"] .nav-link.nav-active.font-semibold { color: #f3ede2 !important; background: #243544 !important; box-shadow: inset 3px 0 #cdaa6a !important; }
+    .app-frame[data-theme="dark"] .nav-link.nav-active.font-semibold svg { color: #f3ede2 !important; }
     .app-frame .brand-logo { border-radius: 6px !important; filter: none !important; }
     .app-frame .brand-logo:hover { filter: none !important; }
     .app-frame .app-panel::before { background: linear-gradient(90deg, transparent, var(--gold), transparent) !important; }
-    .app-frame .app-panel:hover { border-color: color-mix(in srgb, var(--gold) 32%, var(--line)) !important; box-shadow: 0 18px 42px rgba(35, 49, 60, .09) !important; }
-    .app-frame[data-theme="dark"] .app-panel:hover { border-color: rgba(136, 168, 184, .24) !important; }
-    .app-frame [data-tone="amber"] { color: #486577 !important; background: #dce5e9 !important; }
-    .app-frame[data-theme="dark"] [data-tone="amber"] { color: #b2cbd6 !important; background: #2a3b46 !important; }
-    .app-frame ::selection { color: #f7f8f7; background: #617f91; }
-    .app-frame[data-theme="dark"] ::selection { color: #111820; background: #88a8b8; }
+    .app-frame .app-panel:hover { border-color: color-mix(in srgb, var(--gold) 40%, var(--line)) !important; box-shadow: 0 16px 38px rgba(23, 43, 58, .1) !important; }
+    .app-frame[data-theme="dark"] .app-panel:hover { border-color: rgba(205, 170, 106, .28) !important; }
+    .app-frame [data-tone="amber"] { color: #7d6330 !important; background: #f4ead4 !important; }
+    .app-frame[data-theme="dark"] [data-tone="amber"] { color: #e2c489 !important; background: #382f1d !important; }
+    .app-frame ::selection { color: #FFFDF9; background: #803E4B; }
+    .app-frame[data-theme="dark"] ::selection { color: #10161b; background: #cdaa6a; }
   `}</style>
   <div data-theme={theme} className="app-frame min-h-screen md:flex">
     {open && <button aria-label="Close navigation" onClick={() => setOpen(false)} className="fixed inset-0 z-30 bg-black/40 md:hidden" />}
