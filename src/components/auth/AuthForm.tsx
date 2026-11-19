@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,15 @@ import { ThemeToggleButton } from "@/components/theme/ThemeToggleButton";
 
 type AuthFormProps = { mode: "login" | "register" };
 
+function subscribeToLocation(callback: () => void) {
+  window.addEventListener("popstate", callback);
+  return () => window.removeEventListener("popstate", callback);
+}
+
+function accountDeletedSnapshot() {
+  return new URLSearchParams(window.location.search).get("accountDeleted") === "1";
+}
+
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -20,8 +29,8 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [resetSent, setResetSent] = useState(false);
   const configured = Boolean(supabaseConfig());
+  const accountDeleted = useSyncExternalStore(subscribeToLocation, accountDeletedSnapshot, () => false);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -48,19 +57,6 @@ export function AuthForm({ mode }: AuthFormProps) {
     } catch (issue) {
       setError(issue instanceof Error ? issue.message : "The account request could not be completed. Try again.");
     } finally { setBusy(false); }
-  };
-
-  const sendPasswordReset = async () => {
-    setError(""); setNotice("");
-    if (!email.trim()) { setError("Enter your email address first."); return; }
-    if (!configured) { setError("Add the Supabase URL and publishable key to enable account recovery."); return; }
-    setBusy(true);
-    try {
-      const { error: resetError } = await createClient().auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/auth/callback?next=/reset-password` });
-      if (resetError) throw resetError;
-      setResetSent(true); setNotice("If an account exists for that email, a password reset link is on its way.");
-    } catch (issue) { setError(issue instanceof Error ? issue.message : "The reset email could not be sent."); }
-    finally { setBusy(false); }
   };
 
   const onOAuth = async () => {
@@ -101,8 +97,9 @@ export function AuthForm({ mode }: AuthFormProps) {
           <label className="block text-sm font-medium">Email<div className="relative mt-1.5"><Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#84949d]"/><input required type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} className="h-11 w-full border border-[#cbd3d8] bg-white pl-9 pr-3 outline-none focus:border-[#617f91]" placeholder="you@example.org"/></div></label>
           <label className="block text-sm font-medium">Password<div className="relative mt-1.5"><LockKeyhole size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#84949d]"/><input required type={showPassword ? "text" : "password"} minLength={8} autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} className="h-11 w-full border border-[#cbd3d8] bg-white pl-9 pr-10 outline-none focus:border-[#617f91]" placeholder={mode === "register" ? "At least 8 characters" : "Your password"}/><button type="button" onClick={() => setShowPassword(value => !value)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#84949d]" aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>
           {error && <div role="alert" className="border border-[#d8b8b3] bg-[#f7ecea] p-3 text-sm text-[#824f4a]">{error}</div>}
+          {accountDeleted && mode === "login" && <div role="status" className="border border-[#bfd5cb] bg-[#eaf3ee] p-3 text-sm text-[#3f6a58]">Your account and its owned CaseLens records were permanently deleted.</div>}
           {notice && <div role="status" className="border border-[#bfd5cb] bg-[#eaf3ee] p-3 text-sm text-[#3f6a58]">{notice}</div>}
-          {mode === "login" && <button type="button" disabled={busy || resetSent} onClick={() => void sendPasswordReset()} className="text-left text-xs font-semibold text-[#425f72] underline-offset-4 hover:underline disabled:opacity-60">Forgot password?</button>}
+          {mode === "login" && <Link href="/forgot-password" className="text-left text-xs font-semibold text-[#425f72] underline-offset-4 hover:underline">Forgot password?</Link>}
           <button type="submit" disabled={busy} className="flex h-12 w-full items-center justify-center gap-2 bg-[#344b5c] text-sm font-semibold text-white transition hover:bg-[#263b49] disabled:opacity-60">{busy ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}<ArrowRight size={16}/></button>
         </form>
         <p className="mt-6 text-center text-sm text-[#71808a]">{mode === "login" ? "New to CaseLens?" : "Already have an account?"} <Link className="font-semibold text-[#425f72] underline-offset-4 hover:underline" href={mode === "login" ? "/register" : "/login"}>{mode === "login" ? "Create an account" : "Sign in"}</Link></p>

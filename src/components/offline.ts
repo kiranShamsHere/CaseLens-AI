@@ -10,6 +10,20 @@ export function setOfflineUserScope(userId: string) {
   userScope = userId;
 }
 
+export function clearOfflineUserData(userId: string) {
+  if (!storageAvailable()) return;
+  const ownedPrefixes = [`${CACHE_PREFIX}${userId}:`, `${REVIEW_QUEUE_PREFIX}${userId}`];
+  try {
+    for (let index = window.localStorage.length - 1; index >= 0; index--) {
+      const key = window.localStorage.key(index);
+      if (key && ownedPrefixes.some(prefix => key.startsWith(prefix))) window.localStorage.removeItem(key);
+    }
+  } catch {
+    // The server deletion remains complete; browser storage may be unavailable.
+  }
+  if (userScope === userId) userScope = "unscoped";
+}
+
 function cacheKey(key: string) { return `${CACHE_PREFIX}${userScope}:${key}`; }
 function reviewQueueKey() { return `${REVIEW_QUEUE_PREFIX}${userScope}`; }
 

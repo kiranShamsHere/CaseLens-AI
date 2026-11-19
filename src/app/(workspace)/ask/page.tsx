@@ -6,7 +6,7 @@ import { Bot, Check, Copy, Pencil, Send, Sparkles, UserRound, MessageSquareText 
 import { api, apiCollection } from "@/components/api";
 import { normalizeCaseRecord, type CaseRecord } from "@/components/demo-data";
 import { Badge, Evidence, PageHeading, Panel } from "@/components/ui";
-import type { AskResponse, EvidenceCitation } from "@/lib/contracts";
+import type { AskClaim, AskResponse, EvidenceCitation } from "@/lib/contracts";
 
 type Answer = AskResponse;
 type ConversationTurn = { question: string; answer: Answer | null; error: string };
@@ -46,21 +46,35 @@ function normalizeAnswer(value: unknown): Answer | null {
   const toStrings = (input: unknown) => Array.isArray(input)
     ? input.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
     : [];
-  return { summary, status, mode, citations, potentialIssues: toStrings(item.potentialIssues), nextSteps: toStrings(item.nextSteps), conflicts: toStrings(item.conflicts) };
+  const toClaims = (input: unknown): AskClaim[] => Array.isArray(input) ? input.flatMap((entry): AskClaim[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const claim = entry as Record<string, unknown>;
+    if (typeof claim.text !== "string" || !Array.isArray(claim.citations)) return [];
+    const claimCitations = claim.citations.flatMap((citation): EvidenceCitation[] => {
+      if (!citation || typeof citation !== "object") return [];
+      const source = citation as Record<string, unknown>;
+      if (typeof source.source !== "string" || typeof source.quote !== "string") return [];
+      return [{ source: source.source, quote: source.quote, ...(typeof source.documentId === "string" ? { documentId: source.documentId } : {}), ...(typeof source.page === "number" ? { page: source.page } : {}), ...(typeof source.explanation === "string" ? { explanation: source.explanation } : {}) }];
+    });
+    return claimCitations.length ? [{ text: claim.text, citations: claimCitations }] : [];
+  }) : [];
+  return { summary, status, mode, citations, claims: toClaims(item.claims), issueClaims: toClaims(item.issueClaims), potentialIssues: toStrings(item.potentialIssues), nextSteps: toStrings(item.nextSteps), conflicts: toStrings(item.conflicts) };
 }
 
 function AssistantAnswer({ answer }: { answer: Answer }) {
-  const issues = [...answer.potentialIssues, ...answer.conflicts.map((conflict) => `Conflict requires review: ${conflict}`)];
+  const issues = [...(answer.issueClaims?.length ? [] : answer.potentialIssues), ...answer.conflicts.map((conflict) => `Conflict requires review: ${conflict}`)];
   return <div className="min-w-0 max-w-[90%] sm:max-w-[85%]">
     <div className="mb-3 flex flex-wrap items-center gap-2"><span className="text-base font-semibold">CaseLens AI</span><Badge tone="amber">{answer.mode === "retrieval_only" ? "Retrieval only" : answer.mode === "case_metadata" ? "Case record" : answer.mode === "product_knowledge" ? "Product guidance" : answer.mode === "domain_redirect" ? "Outside CaseLens scope" : "Unverified · human review required"}</Badge></div>
     <section><h3 className="text-[11px] font-semibold uppercase tracking-[.14em] text-[#74736D]">Summary</h3><p className="mt-1 whitespace-pre-wrap text-sm leading-7 text-[#4b565f]">{answer.summary}</p></section>
+    {answer.claims && answer.claims.length > 1 && <section className="mt-4"><h3 className="text-[11px] font-semibold uppercase tracking-[.14em] text-[#74736D]">Key Findings</h3><ul className="mt-2 list-disc space-y-2 pl-4 text-sm leading-7 text-[#4b565f]">{answer.claims.map((claim, index) => <li key={index}>{claim.text}</li>)}</ul></section>}
     {answer.mode === "ai_evidence" && answer.citations.length === 0 && <p role="alert" className="mt-3 rounded-lg border border-[#ead4c9] bg-[#fbf1ed] p-3 text-sm text-[#8d5747]">No validated source citations were returned. Treat this summary as unverified until supporting evidence is reviewed.</p>}
     {answer.mode === "product_knowledge" && <p className="mt-3 rounded-lg border border-[#e7e0d5] bg-[#F1ECE1] p-3 text-xs text-[#74736D]">Product guidance only. This information is separate from evidence in the selected legal case.</p>}
     {answer.mode === "domain_redirect" && <p className="mt-3 text-xs text-[#74736D]">CaseLens AI supports CaseLens workflows and analysis of the selected legal case.</p>}
     {answer.citations.length > 0 && <section className="mt-4"><h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[.14em] text-[#74736D]">Supporting Evidence</h3><div className="space-y-3">{answer.citations.map((citation, index) => <div key={`${citation.documentId ?? citation.source}-${citation.page ?? ""}-${index}`}><Evidence source={citation.source} page={citation.page} quote={citation.quote}/>{citation.explanation && <p className="mt-1.5 text-xs leading-relaxed text-[#74736D]">{citation.explanation}</p>}</div>)}</div></section>}
+    {answer.issueClaims?.length ? <section className="mt-4 rounded-lg border border-[#e7e0d5] bg-[#faf4e8] p-4"><h3 className="text-[11px] font-semibold uppercase tracking-[.14em] text-[#803E4B]">Potential Issues</h3><ul className="mt-3 list-disc space-y-2 pl-4 text-sm leading-relaxed text-[#5f5143]">{answer.issueClaims.map((issue, index) => <li key={index}>{issue.text}</li>)}</ul></section> : null}
     {issues.length > 0 && <section className="mt-4 rounded-lg border border-[#e7e0d5] bg-[#faf4e8] p-4"><h3 className="text-[11px] font-semibold uppercase tracking-[.14em] text-[#803E4B]">Potential Issues</h3><ul className="mt-2 list-disc space-y-1 pl-4 text-sm leading-relaxed text-[#5f5143]">{issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></section>}
     {answer.nextSteps.length > 0 && <section className="mt-4 rounded-lg border border-[#e7e0d5] bg-[#F1ECE1] p-4"><h3 className="text-[11px] font-semibold uppercase tracking-[.14em] text-[#172B3A]">Recommended Next Steps</h3><ul className="mt-2 list-disc space-y-1 pl-4 text-sm leading-relaxed text-[#4b565f]">{answer.nextSteps.map((step, index) => <li key={index}>{step}</li>)}</ul></section>}
-    <p className="mt-3 text-xs text-[#74736D]">{answer.mode === "retrieval_only" ? "Keyword retrieval only. No AI-generated answer was produced; verify each retrieved passage in its source document." : answer.mode === "case_metadata" ? "Record-based response from the selected case. Verify the recorded details before relying on them." : answer.mode === "product_knowledge" ? "Product guidance only; it is not evidence about the selected case." : answer.mode === "domain_redirect" ? "No case analysis was performed for this request." : "CaseLens AI evidence-based response. Verify the cited sources before relying on it."}</p>
+    <p className="mt-3 text-xs text-[#74736D]">{answer.mode === "retrieval_only" ? answer.claims?.length ? "Direct extractive match from retrieved passages; no AI-generated interpretation was used. Verify the cited source text before relying on it." : "No AI-generated interpretation was produced, and no unambiguous extractive answer was found. Review the source documents or refine the question." : answer.mode === "case_metadata" ? "Record-based response from the selected case. Verify the recorded details before relying on them." : answer.mode === "product_knowledge" ? "Product guidance only; it is not evidence about the selected case." : answer.mode === "domain_redirect" ? "No case analysis was performed for this request." : "CaseLens AI evidence-based response. Verify the cited sources before relying on it."}</p>
   </div>;
 }
 

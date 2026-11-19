@@ -320,6 +320,7 @@ Copy `.env.example` to `.env.local` and fill in your own values.
 | --- | --- | --- |
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Publishable key only. Never a secret or service key |
+| `SUPABASE_SERVICE_ROLE_KEY` | For account deletion | Server-only secret used to delete the authenticated user's Supabase Auth account. Never prefix it with `NEXT_PUBLIC_` |
 | `GEMINI_API_KEY` | No | Server only. Without it, Ask AI uses retrieval only mode |
 | `GEMINI_MODEL` | No | Default `gemini-3.8-flash`. Use a model available to your key |
 | `NEXT_PUBLIC_API_BASE_URL` | No | Leave empty to use this app's own `/api` routes |
@@ -335,10 +336,16 @@ Copy `.env.example` to `.env.local` and fill in your own values.
 
 | Environment | Redirect URL |
 | --- | --- |
-| Local | `http://127.0.0.1:3000/auth/callback` |
-| Your production deployment | `https://YOUR-DOMAIN/auth/callback` |
+| Local development | `http://localhost:3000/reset-password` |
+| Local development (127.0.0.1) | `http://127.0.0.1:3000/reset-password` |
+| CaseLens production password recovery | `https://caselens-ai-omega.vercel.app/reset-password` |
+| Local Google OAuth callback | `http://localhost:3000/auth/callback` |
+| Local Google OAuth callback | `http://127.0.0.1:3000/auth/callback` |
+| Production Google OAuth callback | `https://caselens-ai-omega.vercel.app/auth/callback` |
 
 You do not need to change the Site URL every time you switch environments, as long as the redirect URL is allowed. Use the same host in the browser as in the URL, so cookies match.
+
+Account deletion uses `SUPABASE_SERVICE_ROLE_KEY` only in the server-side `/api/account/delete` route. Add the key to local `.env.local` and the Vercel server environment variables; never expose it through a `NEXT_PUBLIC_` variable. The current schema cascades each user's case-owned records on Auth user deletion, and the upload API stores extracted text and metadata rather than files in Supabase Storage. Account deletion also clears that user's CaseLens excerpts and queued review actions from the browser's local cache.
 
 For local testing, you can disable email confirmation in your own Supabase project to allow immediate registration. For a publicly accessible deployment, set up email delivery through SMTP if you want verified accounts. Google sign in works independently of email confirmation.
 
@@ -453,6 +460,13 @@ CaseLens is not legal advice and not a case system of record.
 ## Contributing
 
 Small, focused changes are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
+## Team
+
+| Name          | Role                      |
+| ------------- | ------------------------- |
+| Kiran Shams   | Frontend Development & UI |
+| Ghulame Bilal | Backend Development       |
 
 ## License
 
